@@ -1,0 +1,570 @@
+##########################################
+#############Codes for Table 3################
+##########################################
+import itertools
+from fpylll import *
+import random
+import time
+
+def Reverse(tuples):
+    new_tup = ()
+    for k in reversed(tuples):
+        new_tup = new_tup + (k,)
+    return new_tup
+
+def norm(tuples):
+    return sum([ii^2 for ii in tuples])
+
+FPLLL.set_random_seed(100)  
+nvar = 3   
+m = 4
+alpha = 0.14
+tao = 1 - alpha ** (1/(nvar))
+sigma = alpha ** (1/(nvar))
+t = int(round(tao * m))
+l = int(round(sigma * m))
+dd = int(1/6 * (m+nvar) * (m+nvar-1) * (m+nvar-2))
+p1 = 5701145855150612026866931201494598447383178323775934848101302814288603511871893987949795198722553680939552846334647676926785566419913379017749516924874477909352709182062402688344234291863093408654251229430839843420168568160194642749391407463699674391180196449
+q1 = 787112710220343886748369338384324889203667
+N1 = p1 * q1
+p2 = 6116744837535323025242473453342104465723151725608031780473094567973036341678713988970613238173720217875812927804264235295015835726834451206203406406324314243606320412362666157242935591266758776191768801569797982389131946755972100331549132085809946036547932657
+q2 = 1040196139840311605226081927484315022509633
+N2 = p2 * q2 
+delt = 90
+pos1 = 780
+pos2 = 390
+X_x = 170
+X_y = 90
+X_z = 90
+X_u = 140
+X_v = 860
+E = inverse_mod(N1,2^(delt * m) * N2^t)
+
+P.<x, y, z, u, v> = PolynomialRing(ZZ)
+f = z * u + 2^pos2 * y * u + 2^pos1 * x * u + N1
+f1 =  z  + 2^pos2 * y + 2^pos1 * x + N1
+f = P(f)
+f1 = P(f1)
+
+monomials = []
+xd = []
+for k in range(m+1):
+    base = N2^max((t-k),0) * f^k * 2^(delt * (m-k)) * v^l
+    for shifts in itertools.product(range(m+1), repeat = f1.nvariables()-1):
+        if sum(list(shifts)) <= m - k :            
+            g = E^(min(sum(list(shifts))+k,l)) * base * prod(map(power, 
+                                                                 [u * element for element in Reverse(f1.variables())[1:]], shifts))
+            gd = g.monomials() 
+            cd = g.coefficients()
+            for irt in range(len(gd)):
+                for dj in range(min(sum(list(shifts))+k,l)+1):
+                    if gd[irt] % ((u*v)^dj) == 0 and gd[irt] % ((u*v)^(dj+1)) != 0:
+                        g = g - cd[irt] * gd[irt] + (cd[irt]/E^dj) * (gd[irt]/(u*v)^dj)            
+            g = P(g(2^X_x * x,2^X_y * y,2^X_z * z,2^X_u * u,2^X_v * v))
+            xd.append(g)
+            monomials.append(((z * u)^k * prod(map(power, 
+                        [u * element for element in Reverse(f1.variables())[1:]], shifts)) * v^l) / ((u*v)^min(sum(list(shifts))+k,l)))
+
+BB = IntegerMatrix(dd, dd)  
+for uu in range(dd):
+    for ww in xd[uu].monomials():
+        index_var = monomials.index(ww)
+        BB[uu, index_var] = xd[uu].monomial_coefficient(ww)
+    
+start_time = time.time()
+
+BB = LLL.reduction(BB,delta = 0.75,eta = 0.501)
+M = GSO.Mat(BB, flags = GSO.INT_GRAM, float_type = "mpfr")
+M.update_gso()
+
+print(time.time() - start_time)
+
+H = []
+for i in range(dd):
+    H.append(list(BB[i]))
+for i in range(dd-1):
+    for j in range(dd-i-1):
+        if norm(H[j]) >= norm(H[j+1]):
+            a = H[j]
+            H[j] = H[j+1]
+            H[j+1] = a
+
+R.<u1,u2,u3> = PolynomialRing(QQ)
+HH = []    
+for i in range(dd):
+    pol = P((sum(map(mul,zip(H[i],monomials))) * (2^X_u*u)^l)(x/2^X_x,y/2^X_y,z/2^X_z,u/2^X_u,v/2^X_v))
+    polc = pol.coefficients()
+    polm = pol.monomials()
+    cs = []
+    for ii in range(len(polc)):
+        ecs = [0 for ii in range(3)]
+        for jj in range(m+1):
+            if polm[ii] % (u*x)^jj == 0 and polm[ii] % (u*x)^(jj+1) != 0:
+                ecs[0] = jj
+            if polm[ii] % (u*y)^jj == 0 and polm[ii] % (u*y)^(jj+1) != 0:
+                ecs[1] = jj
+            if polm[ii] % (u*z)^jj == 0 and polm[ii] % (u*z)^(jj+1) != 0:
+                ecs[2] = jj  
+            if polm[ii] % (u*v)^jj == 0 and polm[ii] % (u*v)^(jj+1) != 0: 
+                polc[ii] = polc[ii] * N1^jj  
+        cs.append(ecs)
+    pol1 = 0
+    for ii in range(len(polc)):
+        pol1 += polc[ii] * u1^cs[ii][0] * u2^cs[ii][1] * u3^cs[ii][2]
+    HH.append(pol1)
+I = R.ideal(HH)
+dim = I.dimension()
+while dim != 0:
+    HH.pop()
+    I = R.ideal(HH)
+    dim = I.dimension()
+print(I.variety())
+##########################################
+#############Codes for Table 3################
+##########################################
+
+##########################################
+#############Codes for Table 4################
+##########################################
+import itertools
+from fpylll import *
+import random
+import time
+
+def Reverse(tuples):
+    new_tup = ()
+    for k in reversed(tuples):
+        new_tup = new_tup + (k,)
+    return new_tup
+
+def norm(tuples):
+    return sum([ii^2 for ii in tuples])
+
+FPLLL.set_random_seed(100)  
+nvar = 4   
+m = 4
+alpha = 0.1
+tao = 1 - alpha ** (1/(nvar))
+sigma = alpha ** (1/(nvar))
+t = int(round(tao * m))
+l = int(round(sigma * m))
+dd = int(1/24 * (m+nvar) * (m+nvar-1) * (m+nvar-2) * (m+nvar-3))
+p1 = 1478783920086351165654520890953823207985416879008197423181039523327083839392655886248159918212816164545014806925803187143165217307095911
+q1 = 2020283448048683
+N1 = p1 * q1
+p2 = 2511804606024418900660501406424245110120550487541133063820556653819985233884668562293225378882962396477801594754890509692903377783849839
+q2 = 1365732976076213
+N2 = p2 * q2 
+delt = 30
+pos1 = 420
+pos2 = 280
+pos3 = 140
+X_x = 60
+X_y = 40
+X_w = 40
+X_z = 40
+X_u = 50
+X_v = 450
+E = inverse_mod(N1,2^(delt * m) * N2^t)
+
+P.<x, y, w, z, u, v> = PolynomialRing(ZZ)
+f = z * u+ 2^pos3 * w * u + 2^pos2 * y * u + 2^pos1 * x * u + N1
+f1 =  z + 2^pos3 * w + 2^pos2 * y + 2^pos1 * x + N1
+f = P(f)
+f1 = P(f1)
+
+monomials = []
+xd = []
+for k in range(m+1):
+    base = N2^max((t-k),0) * f^k * 2^(delt * (m-k)) * v^l
+    for shifts in itertools.product(range(m+1), repeat = f1.nvariables()-1):
+        if sum(list(shifts)) <= m - k :            
+            g = E^(min(sum(list(shifts))+k,l)) * base * prod(map(power, 
+                                                                 [u * element for element in Reverse(f1.variables())[1:]], shifts))
+            gd = g.monomials() 
+            cd = g.coefficients()
+            for irt in range(len(gd)):
+                for dj in range(min(sum(list(shifts))+k,l)+1):
+                    if gd[irt] % ((u*v)^dj) == 0 and gd[irt] % ((u*v)^(dj+1)) != 0:
+                        g = g - cd[irt] * gd[irt] + (cd[irt]/E^dj) * (gd[irt]/(u*v)^dj)            
+            g = P(g(2^X_x * x,2^X_y * y,2^X_w * w,2^X_z * z,2^X_u * u,2^X_v * v))
+            xd.append(g)
+            monomials.append(((z * u)^k * prod(map(power, 
+                        [u * element for element in Reverse(f1.variables())[1:]], shifts)) * v^l) / ((u*v)^min(sum(list(shifts))+k,l)))
+
+BB = IntegerMatrix(dd, dd)  
+for uu in range(dd):
+    for ww in xd[uu].monomials():
+        index_var = monomials.index(ww)
+        BB[uu, index_var] = xd[uu].monomial_coefficient(ww)
+    
+start_time = time.time()
+
+BB = LLL.reduction(BB,delta = 0.75,eta = 0.501)
+M = GSO.Mat(BB, flags = GSO.INT_GRAM, float_type = "mpfr")
+M.update_gso()
+
+print(time.time() - start_time)
+
+H = []
+for i in range(dd):
+    H.append(list(BB[i]))
+for i in range(dd-1):
+    for j in range(dd-i-1):
+        if norm(H[j]) >= norm(H[j+1]):
+            a = H[j]
+            H[j] = H[j+1]
+            H[j+1] = a
+
+R.<u1,u2,u3,u4> = PolynomialRing(QQ)
+HH = []    
+for i in range(dd):
+    pol = P((sum(map(mul,zip(H[i],monomials))) * (2^X_u*u)^l)(x/2^X_x,y/2^X_y,w/2^X_w,z/2^X_z,u/2^X_u,v/2^X_v))
+    polc = pol.coefficients()
+    polm = pol.monomials()
+    cs = []
+    for ii in range(len(polc)):
+        ecs = [0 for ii in range(4)]
+        for jj in range(m+1):
+            if polm[ii] % (u*x)^jj == 0 and polm[ii] % (u*x)^(jj+1) != 0:
+                ecs[0] = jj
+            if polm[ii] % (u*y)^jj == 0 and polm[ii] % (u*y)^(jj+1) != 0:
+                ecs[1] = jj
+            if polm[ii] % (u*w)^jj == 0 and polm[ii] % (u*w)^(jj+1) != 0:
+                ecs[2] = jj 
+            if polm[ii] % (u*z)^jj == 0 and polm[ii] % (u*z)^(jj+1) != 0:
+                ecs[3] = jj  
+            if polm[ii] % (u*v)^jj == 0 and polm[ii] % (u*v)^(jj+1) != 0: 
+                polc[ii] = polc[ii] * N1^jj  
+        cs.append(ecs)
+    pol1 = 0
+    for ii in range(len(polc)):
+        pol1 += polc[ii] * u1^cs[ii][0] * u2^cs[ii][1] * u3^cs[ii][2] * u4^cs[ii][3]
+    HH.append(pol1)
+I = R.ideal(HH)
+dim = I.dimension()
+while dim != 0:
+    HH.pop()
+    I = R.ideal(HH)
+    dim = I.dimension()
+print(I.variety())
+##########################################
+#############Codes for Table 4################
+##########################################
+
+##########################################
+#############Codes for Table 5################
+##########################################
+import itertools
+from fpylll import *
+import random
+import time
+
+def Reverse(tuples):
+    new_tup = ()
+    for k in reversed(tuples):
+        new_tup = new_tup + (k,)
+    return new_tup
+
+def norm(tuples):
+    return sum([ii^2 for ii in tuples])
+
+FPLLL.set_random_seed(100)  
+nvar = 5   
+m = 3
+alpha = 0.1
+tao = 1 - alpha ** (1/(nvar))
+sigma = alpha ** (1/(nvar))
+t = int(round(tao * m))
+l = int(round(sigma * m))
+dd = int(1/120 * (m+nvar) * (m+nvar-1) * (m+nvar-2) * (m+nvar-3) * (m+nvar-4))
+p1 = 5862127465350515215645335105545786199545465071593342931384561481461756630883379100217870355859289398426994112540179685243618167542211253226737607931916569553841402220589156630943443267767488674505987455094455956227217785674330597387772798642525853778464696242342339058761
+q1 = 1035179650526818531139111843791
+N1 = p1 * q1
+p2 = 7037890897309853360106936670245000664705631946689010350647561659316573457927704445785609394788948901247832381760783490543927309293178672212843150460497914516460516277181515585162552625998095975464990573847388766735035500676399297964855043889019715829458132384235956654239
+q2 = 924018138282516883434032904061
+N2 = p2 * q2 
+delt = 40
+pos1 = 880
+pos2 = 640
+pos3 = 500
+pos4 = 260
+X_x = 60
+X_y = 40
+X_w = 40
+X_w1 = 40
+X_z = 60
+X_u = 100
+X_v = 900
+X = p2 // 2^(pos1-delt) - p1 // 2^pos1
+Y = (p2 % 2^(pos2-delt+X_y)) // 2^(pos2-delt) - (p1 % 2^(pos2+X_y)) // 2^pos2
+W = (p2 % 2^(pos3-delt+X_w)) // 2^(pos3-delt) - (p1 % 2^(pos3+X_w)) // 2^pos3
+W1 = (p2 % 2^(pos4-delt+X_w1)) // 2^(pos4-delt) - (p1 % 2^(pos4+X_w1)) // 2^pos4
+Z = 2^delt * (p2 % 2^(X_z-delt)) - p1 % 2^X_z
+U = q1
+V = p1
+E = inverse_mod(N1,2^(delt * m) * N2^t)
+
+P.<x, y, w, w1, z, u, v> = PolynomialRing(ZZ)
+f = z * u + 2^pos4 * w1 * u + 2^pos3 * w * u + 2^pos2 * y * u + 2^pos1 * x * u + N1
+print(f(X,Y,W,W1,Z,U,V)==2^delt*p2*q1)
+f1 =  z + 2^pos4 * w1 + 2^pos3 * w + 2^pos2 * y + 2^pos1 * x + N1
+f = P(f)
+f1 = P(f1)
+
+monomials = []
+xd = []
+for k in range(m+1):
+    base = N2^max((t-k),0) * f^k * 2^(delt * (m-k)) * v^l
+    for shifts in itertools.product(range(m+1), repeat = f1.nvariables()-1):
+        if sum(list(shifts)) <= m - k :            
+            g = E^(min(sum(list(shifts))+k,l)) * base * prod(map(power, 
+                                                                 [u * element for element in Reverse(f1.variables())[1:]], shifts))
+            gd = g.monomials() 
+            cd = g.coefficients()
+            for irt in range(len(gd)):
+                for dj in range(min(sum(list(shifts))+k,l)+1):
+                    if gd[irt] % ((u*v)^dj) == 0 and gd[irt] % ((u*v)^(dj+1)) != 0:
+                        g = g - cd[irt] * gd[irt] + (cd[irt]/E^dj) * (gd[irt]/(u*v)^dj)            
+            g = P(g(2^X_x * x,2^X_y * y,2^X_w * w,2^X_w1 * w1,2^X_z * z,2^X_u * u,2^X_v * v))
+            xd.append(g)
+            monomials.append(((z * u)^k * prod(map(power, 
+                        [u * element for element in Reverse(f1.variables())[1:]], shifts)) * v^l) / ((u*v)^min(sum(list(shifts))+k,l)))
+
+BB = IntegerMatrix(dd, dd)  
+for uu in range(dd):
+    for ww in xd[uu].monomials():
+        index_var = monomials.index(ww)
+        BB[uu, index_var] = xd[uu].monomial_coefficient(ww)
+
+    
+start_time = time.time()
+
+BB = LLL.reduction(BB,delta = 0.75,eta = 0.501)
+M = GSO.Mat(BB, flags = GSO.INT_GRAM, float_type = "mpfr")
+M.update_gso()
+
+print(time.time() - start_time)
+
+H = []
+for i in range(dd):
+    H.append(list(BB[i]))
+for i in range(dd-1):
+    for j in range(dd-i-1):
+        if norm(H[j]) >= norm(H[j+1]):
+            a = H[j]
+            H[j] = H[j+1]
+            H[j+1] = a
+
+R.<u1,u2,u3,u4,u5> = PolynomialRing(QQ)
+HH = []    
+for i in range(dd):
+    pol = P((sum(map(mul,zip(H[i],monomials))) * (2^X_u*u)^l)(x/2^X_x,y/2^X_y,w/2^X_w,w1/2^X_w1,z/2^X_z,u/2^X_u,v/2^X_v))
+    polc = pol.coefficients()
+    polm = pol.monomials()
+    cs = []
+    for ii in range(len(polc)):
+        ecs = [0 for ii in range(5)]
+        for jj in range(m+1):
+            if polm[ii] % (u*x)^jj == 0 and polm[ii] % (u*x)^(jj+1) != 0:
+                ecs[0] = jj
+            if polm[ii] % (u*y)^jj == 0 and polm[ii] % (u*y)^(jj+1) != 0:
+                ecs[1] = jj
+            if polm[ii] % (u*w)^jj == 0 and polm[ii] % (u*w)^(jj+1) != 0:
+                ecs[2] = jj
+            if polm[ii] % (u*w1)^jj == 0 and polm[ii] % (u*w1)^(jj+1) != 0:
+                ecs[3] = jj 
+            if polm[ii] % (u*z)^jj == 0 and polm[ii] % (u*z)^(jj+1) != 0:
+                ecs[4] = jj   
+            if polm[ii] % (u*v)^jj == 0 and polm[ii] % (u*v)^(jj+1) != 0: 
+                polc[ii] = polc[ii] * N1^jj  
+        cs.append(ecs)
+    pol1 = 0
+    for ii in range(len(polc)):
+        pol1 += polc[ii] * u1^cs[ii][0] * u2^cs[ii][1] * u3^cs[ii][2] * u4^cs[ii][3] * u5^cs[ii][4]
+    HH.append(pol1)
+I = R.ideal(HH)
+dim = I.dimension()
+while dim != 0:
+    HH.pop()
+    I = R.ideal(HH)
+    dim = I.dimension()
+print(I.variety())
+##########################################
+#############Codes for Table 5################
+##########################################
+
+##########################################
+#############Codes for Table 6################
+##########################################
+from fpylll import *
+import itertools
+import random
+import time
+
+def Reverse(tuples):
+    new_tup = ()
+    for k in reversed(tuples):
+        new_tup = new_tup + (k,)
+    return new_tup
+
+def norm(tuples):
+    return sum([ii^2 for ii in tuples])
+
+FPLLL.set_random_seed(100)  
+nvar = 2   
+m = 8
+alpha = 0.31
+tao = 1 - alpha ** (1/(nvar))
+sigma = alpha ** (1/(nvar))
+t = int(round(tao * m))
+l = int(round(sigma * m))
+dd = int(1/2 * (m+nvar) * (m+nvar-1))
+p1 = 5080864988770142619628191634957659046160759514505560995843544705395601341418766006222224324567707067037697599084335426957082981022073895313272641117131106454551175703460373614946106991739750480390702785736421
+q1 = 1654448736864460801033989917985444044309267377141984735901342912684092398006947062082293735309
+N1 = p1 * q1
+p2 = 4666595820487715113790133613613530794643941506039925522697802152773282825961573251252087204367592751858000745086820047689632768270740718978063088426497156023469137928125186719030352988269238497928026876653243
+q2 = 1709944510868494768489942680978207003057024321756455465094371813568807128360215438620706060621
+N2 = p2 * q2 
+delt = 0
+pos = 670
+X_x = 20
+X_y = 10
+X_u = 310
+X_v = 690
+E = inverse_mod(N1,2^(delt * m) * N2^t)
+X = p2 // 2^(pos-delt) - p1 // 2^pos
+Y = 2^delt * (p2 % 2^(X_y-delt)) - p1 % 2^X_y
+U = q1
+V = p1
+
+P.<x, y, u, v> = PolynomialRing(ZZ)
+f = y * u+ 2^pos * x * u + N1
+f1 =  y + 2^pos * x + N1
+f = P(f)
+f1 = P(f1)
+
+monomials = []
+xd = []
+for k in range(m+1):
+    base = N2^max((t-k),0) * f^k * 2^(delt * (m-k)) * v^l
+    for shifts in itertools.product(range(m+1), repeat = f1.nvariables()-1):
+        if sum(list(shifts)) <= m - k :            
+            g = E^(min(sum(list(shifts))+k,l)) * base * prod(map(power, 
+                                                                 [u * element for element in Reverse(f1.variables())[1:]], shifts))
+            gd = g.monomials() 
+            cd = g.coefficients()
+            for irt in range(len(gd)):
+                for dj in range(min(sum(list(shifts))+k,l)+1):
+                    if gd[irt] % ((u*v)^dj) == 0 and gd[irt] % ((u*v)^(dj+1)) != 0:
+                        g = g - cd[irt] * gd[irt] + (cd[irt]/E^dj) * (gd[irt]/(u*v)^dj)            
+            g = P(g(2^X_x * x,2^X_y * y,2^X_u * u,2^X_v * v))
+            xd.append(g)
+            monomials.append(((y * u)^k * prod(map(power, 
+                        [u * element for element in Reverse(f1.variables())[1:]], shifts)) * v^l) / ((u*v)^min(sum(list(shifts))+k,l)))
+
+BB = IntegerMatrix(dd, dd)  
+for uu in range(dd):
+    for ww in xd[uu].monomials():
+        index_var = monomials.index(ww)
+        BB[uu, index_var] = xd[uu].monomial_coefficient(ww)
+    
+start_time = time.time()
+
+BB = LLL.reduction(BB,delta = 0.75,eta = 0.501)
+M = GSO.Mat(BB, flags = GSO.INT_GRAM, float_type = "mpfr")
+M.update_gso()
+
+print(time.time() - start_time)
+
+H = []
+for i in range(dd):
+    H.append(list(BB[i]))
+for i in range(dd-1):
+    for j in range(dd-i-1):
+        if norm(H[j]) >= norm(H[j+1]):
+            a = H[j]
+            H[j] = H[j+1]
+            H[j+1] = a
+R.<u1,u2> = PolynomialRing(QQ)
+HH = []
+for i in range(dd):
+    pol = P((sum(map(mul,zip(H[i],monomials))) * (2^X_u*u)^l)(x/2^X_x,y/2^X_y,u/2^X_u,v/2^X_v))
+    polc = pol.coefficients()
+    polm = pol.monomials()
+    cs = []
+    for ii in range(len(polc)):
+        ecs = [0 for ii in range(2)]
+        for jj in range(m+1):
+            if polm[ii] % (u*x)^jj == 0 and polm[ii] % (u*x)^(jj+1) != 0:
+                ecs[0] = jj
+            if polm[ii] % (u*y)^jj == 0 and polm[ii] % (u*y)^(jj+1) != 0:
+                ecs[1] = jj 
+            if polm[ii] % (u*v)^jj == 0 and polm[ii] % (u*v)^(jj+1) != 0: 
+                polc[ii] = polc[ii] * N1^jj
+        cs.append(ecs)
+    pol1 = 0
+    for ii in range(len(polc)):
+        pol1 += polc[ii] * u1^cs[ii][0] * u2^cs[ii][1]
+    HH.append(pol1)
+I = R.ideal(HH)
+dim = I.dimension()
+while dim != 0:
+    HH.pop()
+    I = R.ideal(HH)
+    dim = I.dimension()
+print(I.variety())
+##########################################
+#############Codes for Table 6################
+##########################################
+
+##########################################
+###########Generate prime factors#############
+##########################################
+import random
+
+def stringlize(a,pos):
+    j = ''
+    a.reverse()
+    for i in a:
+        j += str(i)
+    j = int(j,2)
+    return j * 2**pos
+
+delt = 40
+t = 900
+a0 = random_prime(2^t-1,False,2^(t-1))
+if is_prime(a0):
+    print(a0)
+    print("\n")
+    a = [int(i) for i in list(bin(a0).replace("0b",''))]
+    a.reverse()
+    #set the position of the bit blocks
+    pos1 = 60
+    len1 = 200
+    pos2 = 300
+    len2 = 200
+    pos3 = 540
+    len3 = 100
+    pos4 = 680
+    len4 = 200
+    if pos2 > pos1+len1 and pos3 > pos2+len2 and pos4 > pos3+len3 and pos4+len4 < len(a):
+        lbound = stringlize(a[pos1:(pos1+len1)],pos1-delt)+stringlize(a[pos2:(pos2+len2)],pos2-delt)+stringlize(a[pos3:(pos3+len3)],pos3-delt)+stringlize(a[pos4:(pos4+len4)],pos4-delt)
+        lbound += 2^(t-1)       #the most significant bit needs to be 1
+        p = 0
+        while not(is_prime(p)):
+            irt1 = random.randint(0, 2^(t-(pos4+len4)+delt-1)-1)
+            p = lbound + irt1*2^(pos4+len4-delt)
+            irt2 = random.randint(0, 2^(pos4-len3-pos3)-1)
+            p = p + irt2*2^(pos3+len3-delt)
+            irt3 = random.randint(0, 2^(pos3-len2-pos2)-1)
+            p = p + irt3*2^(len2+pos2-delt)
+            irt4 = random.randint(0, 2^(pos2-len1-pos1)-1)
+            p = p + irt4*2^(len1+pos1-delt)
+            irt5 = random.randint(0, 2^(pos1-delt)-1)
+            p = p + irt5
+            if is_prime(p):
+                print(p)
+##########################################
+###########Generate prime factors##############
+##########################################
